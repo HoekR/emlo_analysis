@@ -98,6 +98,7 @@ class EMLOCrawler:
 
     def crawl_collection(self, collection_info: Dict[str, str]) -> List[EMLODoc]:
         """Crawl all results pages for a given EMLO collection."""
+        print('crawling collection', collection_info['collection_name'])
         self.set_collection(collection_info['collection_name'], collection_info['search_name'])
         crawl_finished: bool = False
         emlo_docs: List[EMLODoc] = []
@@ -131,7 +132,11 @@ class EMLOCrawler:
         results_table = page_soup.find(id='results')
         results_rows = results_table.find_all('tr')
         results = self.parse_results_rows(results_rows)
-        total_results = int(page_soup.find('span', class_='font-18').text.strip().split(' results ')[0])
+        try:
+            total_results = int(page_soup.find('span', class_='font-18').text.strip().split(' results')[0])
+        except ValueError:
+            print(page_soup.find('span', class_='font-18').text.strip())
+            raise
         return {
             'total_results': total_results,
             'parsed_results': results
