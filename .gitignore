@@ -22,3 +22,8 @@ Thumbs.db
 # Logs and databases #
 ######################
 *.log
+
+# Crawled data #
+################
+
+emlo_collections/*.json
