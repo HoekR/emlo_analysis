@@ -2,14 +2,21 @@ from typing import Union, List, Dict
 from bs4 import BeautifulSoup
 import requests
 from requests import Response, RequestException
-import re
+import json
 import time
 import random
 
 
-def get_results_page(results_url: str) -> BeautifulSoup:
+headers = {
+    'User-agent': 'Data Scopes (https://marijnkoolen.github.io/Data-Scopes-2019/)',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-gb',
+}
+
+
+def get_results_page(results_url: str, min_wait: int = 3, random_wait: int = 10) -> BeautifulSoup:
     """Input is a URL for an EMLO search results page. Output is a Beautifulsoup object for the results page."""
-    response = get_wait_url(results_url)
+    response = get_wait_url(results_url, min_wait=min_wait, random_wait=random_wait)
     if response.status_code != 200:
         raise RequestException(f'Error retrieving results page for url {results_url}')
     page_soup = BeautifulSoup(response.content, 'lxml')
@@ -20,7 +27,7 @@ def get_wait_url(url: str, min_wait: int = 3, random_wait: int = 10) -> Response
     """Retrieve a page by URL and wait before returning response."""
     # wait at least three seconds plus some random extra seconds
     wait_time = min_wait + random.random() * random_wait
-    response = requests.get(url)
+    response = requests.get(url, headers=headers)
     time.sleep(wait_time)
     return response
 
@@ -36,6 +43,18 @@ def parse_results_header(header_row: BeautifulSoup) -> List[str]:
     headers[0] = 'Result_num'
     headers[1] = 'Doc_type'
     return headers
+
+
+def collection_filename(collection):
+    collection_dir = '../emlo_collections'
+    prefix = 'emlo_collection'
+    return f"{collection_dir}/{prefix}-{collection['print_name']}.json"
+
+
+def write_collection(collection, emlo_docs):
+    out_file = collection_filename(collection)
+    with open(out_file, 'wt') as fh:
+        json.dump([emlo_doc.json() for emlo_doc in emlo_docs], fh)
 
 
 class EMLODoc:
@@ -83,10 +102,12 @@ class EMLODoc:
 
 class EMLOCrawler:
 
-    def __init__(self):
+    def __init__(self, min_wait: int = 3, random_wait: int = 10):
         self.base_url = 'http://emlo.bodleian.ox.ac.uk/forms/advanced'
         self.collection_name: Union[None, str] = None
         self.search_name: Union[None, str] = None
+        self.min_wait = min_wait
+        self.random_wait = random_wait
 
     def set_collection(self, collection_name: str, search_name: str) -> None:
         self.collection_name = collection_name
@@ -108,6 +129,7 @@ class EMLOCrawler:
             page_soup = self.get_results_page(start_num=start_num)
             results_data = self.parse_results_page(page_soup)
             emlo_docs += results_data['parsed_results']
+            write_collection(collection_info, emlo_docs)
             print(len(emlo_docs), 'of', results_data['total_results'], 'retrieved')
             if len(emlo_docs) >= results_data['total_results']:
                 crawl_finished = True
@@ -124,7 +146,7 @@ class EMLOCrawler:
         """Gets a results page starting from start_num and returns a BeautifulSoup object."""
         self.assert_collection_set()
         results_url = self.make_results_page_url(start_num=start_num)
-        page_soup = get_results_page(results_url)
+        page_soup = get_results_page(results_url, min_wait=self.min_wait, random_wait=self.random_wait)
         return page_soup
 
     def parse_results_page(self, page_soup: BeautifulSoup) -> Dict[str, Union[int, List[EMLODoc]]]:
